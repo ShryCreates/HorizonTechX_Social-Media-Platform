@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SocialHub</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+</head>
+<body>
+
+  <!-- AUTH SCREEN -->
+  <div id="auth-screen" class="screen">
+    <div class="auth-box">
+      <h1 class="logo"><i class="fa-solid fa-hashtag"></i> SocialHub</h1>
+      <p class="tagline">Connect. Share. Explore.</p>
+
+      <div class="auth-tabs">
+        <button class="tab-btn active" onclick="showTab('login')">Login</button>
+        <button class="tab-btn" onclick="showTab('register')">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form" onsubmit="login(event)">
+        <input type="email" id="login-email" placeholder="Email" required />
+        <input type="password" id="login-password" placeholder="Password" required />
+        <button type="submit">Login</button>
+        <p class="auth-error" id="login-error"></p>
+      </form>
+
+      <!-- Register Form -->
+      <form id="register-form" class="auth-form hidden" onsubmit="register(event)">
+        <input type="text" id="reg-username" placeholder="Username" required />
+        <input type="email" id="reg-email" placeholder="Email" required />
+        <input type="password" id="reg-password" placeholder="Password" required />
+        <button type="submit">Create Account</button>
+        <p class="auth-error" id="register-error"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app-screen" class="screen hidden">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+      <span class="logo" onclick="showPage('home')"><i class="fa-solid fa-hashtag"></i> SocialHub</span>
+      <div class="nav-search">
+        <input type="text" id="search-input" placeholder="Search users..." oninput="searchUsers()" />
+        <div id="search-results" class="search-dropdown hidden"></div>
+      </div>
+      <div class="nav-links">
+        <button onclick="showPage('home')" title="Feed"><i class="fa-solid fa-house"></i></button>
+        <button onclick="showPage('explore')" title="Explore"><i class="fa-solid fa-compass"></i></button>
+        <button onclick="showPage('profile', currentUser._id)" title="Profile"><i class="fa-solid fa-user"></i></button>
+        <button onclick="logout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
+      </div>
+    </nav>
+
+    <!-- HOME PAGE (Feed) -->
+    <div id="page-home" class="page">
+      <div class="feed-layout">
+        <div class="feed-main">
+          <div class="create-post card">
+            <textarea id="post-content" placeholder="What's on your mind?" rows="3"></textarea>
+            <div class="create-post-footer">
+              <label class="img-pick-btn" for="post-image" title="Add photo">
+                <i class="fa-solid fa-image"></i> Photo
+                <input type="file" id="post-image" accept="image/*" onchange="previewImage(event)" style="display:none"/>
+              </label>
+              <div id="img-preview-wrap" class="img-preview-wrap hidden">
+                <img id="img-preview" src="" alt="preview"/>
+                <button class="remove-img-btn" onclick="removeImage()" title="Remove"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <button onclick="createPost()"><i class="fa-solid fa-paper-plane"></i> Post</button>
+            </div>
+          </div>
+          <div id="feed-posts"></div>
+        </div>
+        <aside class="sidebar">
+          <div class="card sidebar-profile" id="sidebar-user"></div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- EXPLORE PAGE -->
+    <div id="page-explore" class="page hidden">
+      <h2 class="page-title">Explore</h2>
+      <div id="explore-posts"></div>
+    </div>
+
+    <!-- PROFILE PAGE -->
+    <div id="page-profile" class="page hidden">
+      <div class="profile-header card" id="profile-header"></div>
+      <div id="profile-posts"></div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
