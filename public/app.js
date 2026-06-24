@@ -36,6 +36,13 @@ function showAuthScreen() {
 function showApp() {
   document.getElementById('auth-screen').classList.add('hidden');
   document.getElementById('app-screen').classList.remove('hidden');
+  // sync dark toggle state
+  const saved = localStorage.getItem('theme') || 'light';
+  const input = document.getElementById('dark-toggle-input');
+  const thumb = document.getElementById('dark-toggle-thumb');
+  if (input) input.checked = saved === 'dark';
+  if (thumb) thumb.textContent = saved === 'dark' ? '🌙' : '☀️';
+  document.documentElement.setAttribute('data-theme', saved);
   showPage('home');
 }
 
@@ -90,31 +97,118 @@ async function logout() {
 function showPage(page, param) {
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   document.getElementById(`page-${page}`).classList.remove('hidden');
-  if (page === 'home') loadFeed();
+
+  // update active nav btn
+  document.querySelectorAll('.ls-nav-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(`nav-${page}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  if (page === 'home')    loadFeed();
   if (page === 'explore') loadExplore();
   if (page === 'profile') loadProfile(param || currentUser._id);
 }
 
 // ── Sidebar ──
 function renderSidebar() {
-  const el = document.getElementById('sidebar-user');
-  if (!el || !currentUser) return;
+  if (!currentUser) return;
+
   const avatarHtml = currentUser.avatar
-    ? `<img src="${currentUser.avatar}" class="avatar-img lg" style="cursor:pointer" onclick="showPage('profile','${currentUser._id}')" alt="avatar"/>`
-    : `<div class="avatar lg" style="cursor:pointer" onclick="showPage('profile','${currentUser._id}')">${currentUser.username[0].toUpperCase()}</div>`;
-  el.innerHTML = `
-    ${avatarHtml}
-    <strong style="margin-top:8px">${currentUser.username}</strong>
-    <p class="bio">${currentUser.bio || '<span style="font-style:italic;color:var(--muted)">No bio yet</span>'}</p>
-    <div class="stats-row">
-      <div class="stat stat-clickable" onclick="openFollowList('${currentUser._id}','following')">
-        <strong>${currentUser.following?.length || 0}</strong><span>Following</span>
+    ? `<img src="${currentUser.avatar}" class="avatar-img" style="width:52px;height:52px;margin:0 auto 10px" alt="avatar"/>`
+    : `<div class="avatar" style="width:52px;height:52px;font-size:1.2rem;margin:0 auto 10px">${currentUser.username[0].toUpperCase()}</div>`;
+
+  // ── Left sidebar mini profile ──
+  const ls = document.getElementById('ls-profile');
+  if (ls) {
+    ls.onclick = () => showPage('profile', currentUser._id);
+    ls.innerHTML = `
+      ${avatarHtml}
+      <span class="ls-name">${currentUser.username}</span>
+      <span class="ls-bio">${currentUser.bio || 'No bio yet'}</span>
+      <div class="ls-stats">
+        <div class="ls-stat stat-clickable" onclick="event.stopPropagation();openFollowList('${currentUser._id}','following')">
+          <strong>${currentUser.following?.length || 0}</strong><span>Following</span>
+        </div>
+        <div class="ls-stat stat-clickable" onclick="event.stopPropagation();openFollowList('${currentUser._id}','followers')">
+          <strong>${currentUser.followers?.length || 0}</strong><span>Followers</span>
+        </div>
+      </div>`;
+  }
+
+  // ── Right sidebar mini profile ──
+  const rs = document.getElementById('rs-profile');
+  if (rs) {
+    const rsAvatarHtml = currentUser.avatar
+      ? `<img src="${currentUser.avatar}" class="avatar-img" style="width:42px;height:42px;flex-shrink:0" alt="avatar"/>`
+      : `<div class="avatar" style="width:42px;height:42px;font-size:0.95rem;flex-shrink:0">${currentUser.username[0].toUpperCase()}</div>`;
+    rs.onclick = () => showPage('profile', currentUser._id);
+    rs.innerHTML = `
+      ${rsAvatarHtml}
+      <div class="rs-profile-info">
+        <strong>${currentUser.username}</strong>
+        <span>${currentUser.bio || 'View your profile'}</span>
       </div>
-      <div class="stat stat-clickable" onclick="openFollowList('${currentUser._id}','followers')">
-        <strong>${currentUser.followers?.length || 0}</strong><span>Followers</span>
-      </div>
-    </div>
-  `;
+      <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:0.8rem;flex-shrink:0"></i>`;
+  }
+
+  // ── create-post avatar ──
+  const cpAvatar = document.getElementById('cp-avatar');
+  if (cpAvatar) {
+    cpAvatar.innerHTML = currentUser.avatar
+      ? `<img src="${currentUser.avatar}" class="avatar-img" alt="avatar" style="width:42px;height:42px"/>`
+      : `<div class="avatar" style="width:42px;height:42px;font-size:1rem">${currentUser.username[0].toUpperCase()}</div>`;
+  }
+
+  // ── Suggested users ──
+  loadSuggestedUsers();
+}
+
+async function loadSuggestedUsers() {
+  const container = document.getElementById('suggested-users');
+  if (!container) return;
+  try {
+    // get random users excluding self
+    const users = await api('GET', '/api/users/search?q=');
+    const suggestions = users
+      .filter(u => u._id !== currentUser._id)
+      .filter(u => !(currentUser.following || []).some(f => (f._id || f).toString() === u._id.toString()))
+      .slice(0, 5);
+
+    if (!suggestions.length) {
+      container.innerHTML = '<p style="color:var(--muted);font-size:0.82rem;padding:4px 0">No suggestions right now.</p>';
+      return;
+    }
+
+    container.innerHTML = suggestions.map(u => `
+      <div class="suggested-item">
+        ${u.avatar
+          ? `<img src="${u.avatar}" class="avatar-img" style="width:36px;height:36px;flex-shrink:0" alt="avatar"/>`
+          : `<div class="avatar" style="width:36px;height:36px;font-size:0.85rem;flex-shrink:0">${u.username[0].toUpperCase()}</div>`}
+        <div class="suggested-info">
+          <strong onclick="showPage('profile','${u._id}')">${u.username}</strong>
+          <span>${u.bio ? u.bio.slice(0,32) + (u.bio.length > 32 ? '…' : '') : 'SocialHub member'}</span>
+        </div>
+        <button class="suggested-follow-btn" id="sfb-${u._id}"
+          onclick="toggleSuggestedFollow('${u._id}', this)">Follow</button>
+      </div>`).join('');
+  } catch {
+    container.innerHTML = '';
+  }
+}
+
+async function toggleSuggestedFollow(userId, btn) {
+  btn.disabled = true;
+  try {
+    const { following, followerCount } = await api('POST', `/api/users/${userId}/follow`);
+    btn.textContent = following ? '✓ Following' : 'Follow';
+    btn.classList.toggle('following', following);
+    currentUser = await api('GET', '/api/auth/me');
+    renderSidebar();
+    showToast(following ? 'Followed!' : 'Unfollowed');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Feed ──
@@ -129,36 +223,49 @@ async function loadFeed() {
       container.innerHTML = `
         <div class="empty-feed card">
           <div class="empty-feed-illustration">
-            <svg viewBox="0 0 280 200" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <!-- background blobs -->
-              <ellipse cx="140" cy="160" rx="110" ry="28" fill="#ede9fe" opacity="0.6"/>
+            <svg viewBox="0 0 280 210" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+
+              <!-- ground shadow blob -->
+              <ellipse cx="140" cy="192" rx="108" ry="16" fill="#ddd6fe" opacity="0.5"/>
+
               <!-- phone frame -->
-              <rect x="90" y="20" width="100" height="160" rx="16" fill="#ffffff" stroke="#e0e0e0" stroke-width="2"/>
-              <rect x="90" y="20" width="100" height="160" rx="16" fill="url(#phoneGrad)" opacity="0.06"/>
-              <!-- screen lines (posts skeleton) -->
-              <circle cx="108" cy="52" r="8" fill="#c4b5fd"/>
-              <rect x="122" y="46" width="48" height="6" rx="3" fill="#ddd6fe"/>
-              <rect x="122" y="56" width="32" height="4" rx="2" fill="#ede9fe"/>
-              <rect x="100" y="70" width="80" height="36" rx="8" fill="#f3f0ff"/>
-              <rect x="100" y="112" width="28" height="6" rx="3" fill="#ddd6fe"/>
-              <rect x="134" y="112" width="20" height="6" rx="3" fill="#ddd6fe"/>
-              <!-- floating hearts -->
-              <text x="196" y="60" font-size="18" opacity="0.7">💜</text>
-              <text x="58"  y="80" font-size="14" opacity="0.5">✨</text>
-              <text x="200" y="110" font-size="12" opacity="0.5">🌟</text>
-              <!-- people icons -->
-              <circle cx="56"  cy="130" r="18" fill="#ede9fe"/>
-              <circle cx="56"  cy="124" r="6"  fill="#c4b5fd"/>
-              <path d="M43 143 q13-10 26 0" stroke="#c4b5fd" stroke-width="2" fill="none"/>
-              <circle cx="224" cy="130" r="18" fill="#ede9fe"/>
-              <circle cx="224" cy="124" r="6"  fill="#a78bfa"/>
-              <path d="M211 143 q13-10 26 0" stroke="#a78bfa" stroke-width="2" fill="none"/>
-              <defs>
-                <linearGradient id="phoneGrad" x1="90" y1="20" x2="190" y2="180" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#6c63ff"/>
-                  <stop offset="1" stop-color="#48c6ef"/>
-                </linearGradient>
-              </defs>
+              <rect x="88" y="18" width="104" height="166" rx="18" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.5"/>
+              <!-- phone inner screen -->
+              <rect x="96" y="30" width="88" height="142" rx="12" fill="#f5f3ff"/>
+
+              <!-- skeleton row 1: avatar + lines -->
+              <circle cx="112" cy="54" r="9" fill="#c4b5fd"/>
+              <rect x="128" y="48" width="44" height="7" rx="3.5" fill="#ddd6fe"/>
+              <rect x="128" y="59" width="30" height="5"  rx="2.5" fill="#e9d5ff"/>
+
+              <!-- skeleton image block -->
+              <rect x="104" y="74" width="72" height="44" rx="9" fill="#ddd6fe"/>
+
+              <!-- skeleton row 2: lines -->
+              <rect x="104" y="126" width="56" height="6" rx="3" fill="#ddd6fe"/>
+              <rect x="104" y="137" width="38" height="5" rx="2.5" fill="#e9d5ff"/>
+
+              <!-- phone home bar -->
+              <rect x="122" y="156" width="36" height="4" rx="2" fill="#ddd6fe"/>
+
+              <!-- LEFT person silhouette -->
+              <ellipse cx="56" cy="192" rx="22" ry="6" fill="#ddd6fe" opacity="0.6"/>
+              <ellipse cx="56" cy="168" rx="16" ry="20" fill="#ddd6fe"/>
+              <circle  cx="56" cy="142" r="13" fill="#ddd6fe"/>
+
+              <!-- RIGHT person silhouette -->
+              <ellipse cx="224" cy="192" rx="22" ry="6" fill="#c4b5fd" opacity="0.5"/>
+              <ellipse cx="224" cy="168" rx="16" ry="20" fill="#c4b5fd" opacity="0.7"/>
+              <circle  cx="224" cy="142" r="13" fill="#c4b5fd" opacity="0.7"/>
+
+              <!-- floating emojis with animation classes -->
+              <text x="196" y="46"  font-size="16" class="ef-float-1">💜</text>
+              <text x="46"  y="72"  font-size="14" class="ef-float-2">✨</text>
+              <text x="204" y="108" font-size="13" class="ef-float-3">🌟</text>
+              <text x="36"  y="130" font-size="13" class="ef-float-2">💫</text>
+              <text x="210" y="150" font-size="12" class="ef-float-1">❤️</text>
+              <text x="50"  y="170" font-size="11" class="ef-float-3">⭐</text>
+
             </svg>
           </div>
           <h3 class="empty-feed-title">Your feed is empty</h3>
@@ -188,7 +295,47 @@ async function loadExplore() {
     const posts = await api('GET', '/api/posts');
     container.innerHTML = '';
     if (!posts.length) {
-      container.innerHTML = `<div class="empty"><i class="fa-solid fa-compass"></i><p>No posts yet. Be the first!</p></div>`;
+      container.innerHTML = `
+        <div class="empty-state card">
+          <div class="empty-illustration">
+            <svg viewBox="0 0 320 220" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <!-- ground shadow -->
+              <ellipse cx="160" cy="200" rx="100" ry="12" fill="#e0e7ff" opacity="0.7"/>
+              <!-- big compass circle -->
+              <circle cx="160" cy="100" r="72" fill="#eef2ff" stroke="#c7d2fe" stroke-width="2"/>
+              <circle cx="160" cy="100" r="58" fill="#fff" stroke="#e0e7ff" stroke-width="1.5"/>
+              <!-- compass rose -->
+              <polygon points="160,52 166,96 160,88 154,96" fill="url(#compassRed)"/>
+              <polygon points="160,148 166,104 160,112 154,104" fill="#94a3b8"/>
+              <polygon points="108,100 152,94 144,100 152,106" fill="#94a3b8"/>
+              <polygon points="212,100 168,94 176,100 168,106" fill="#94a3b8"/>
+              <!-- center dot -->
+              <circle cx="160" cy="100" r="7" fill="#6366f1"/>
+              <circle cx="160" cy="100" r="3.5" fill="#fff"/>
+              <!-- N S E W labels -->
+              <text x="156" y="44" font-size="11" fill="#6366f1" font-weight="700" font-family="system-ui">N</text>
+              <text x="156" y="164" font-size="11" fill="#94a3b8" font-weight="600" font-family="system-ui">S</text>
+              <text x="96" y="104" font-size="11" fill="#94a3b8" font-weight="600" font-family="system-ui">W</text>
+              <text x="218" y="104" font-size="11" fill="#94a3b8" font-weight="600" font-family="system-ui">E</text>
+              <!-- floating stars -->
+              <text x="52"  y="60"  font-size="16" opacity="0.7">✨</text>
+              <text x="250" y="55"  font-size="14" opacity="0.6">⭐</text>
+              <text x="265" y="150" font-size="12" opacity="0.5">💫</text>
+              <text x="38"  y="155" font-size="13" opacity="0.5">🌟</text>
+              <defs>
+                <linearGradient id="compassRed" x1="160" y1="52" x2="160" y2="96" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6366f1"/>
+                  <stop offset="1" stop-color="#8b5cf6"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <h3 class="empty-state-title">Nothing to explore yet</h3>
+          <p class="empty-state-sub">Be the first to post something and start the conversation.</p>
+          <button class="empty-btn-primary" onclick="showPage('home'); focusCreatePost()">
+            <i class="fa-solid fa-pen-to-square"></i> Create a Post
+          </button>
+        </div>`;
       return;
     }
     posts.forEach(p => container.appendChild(renderPost(p)));
@@ -201,7 +348,7 @@ async function loadExplore() {
 async function loadProfile(userId) {
   const headerEl = document.getElementById('profile-header');
   const postsEl  = document.getElementById('profile-posts');
-  headerEl.innerHTML = '<p style="color:var(--muted);padding:20px">Loading…</p>';
+  headerEl.innerHTML = '<p style="color:var(--muted);padding:40px;text-align:center">Loading…</p>';
   postsEl.innerHTML  = '';
   try {
     const { user, posts } = await api('GET', `/api/users/${userId}`);
@@ -209,54 +356,159 @@ async function loadProfile(userId) {
     const isFollowing = user.followers.some(f =>
       (f._id || f).toString() === currentUser._id.toString()
     );
-
     const joinDate = new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
     const avatarHtml = user.avatar
-      ? `<img src="${user.avatar}" class="avatar-img lg" alt="avatar"/>`
-      : `<div class="avatar lg">${user.username[0].toUpperCase()}</div>`;
+      ? `<img src="${user.avatar}" class="profile-avatar-img" alt="avatar"/>`
+      : `<div class="profile-avatar-init">${user.username[0].toUpperCase()}</div>`;
 
+    headerEl.className = 'profile-card';
     headerEl.innerHTML = `
-      <div class="profile-avatar-wrap">
-        ${avatarHtml}
-        ${isMe ? `<label class="avatar-upload-btn" title="Change photo" for="avatar-file-input">
-          <i class="fa-solid fa-camera"></i>
-          <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="uploadAvatar(event)"/>
+      <!-- ── Cover Banner ── -->
+      <div class="profile-cover">
+        ${isMe ? `<label class="cover-upload-btn" for="cover-file-input" title="Change cover">
+          <i class="fa-solid fa-camera"></i> Edit Cover
+          <input type="file" id="cover-file-input" accept="image/*" style="display:none"
+                 onchange="uploadCover(event)"/>
         </label>` : ''}
       </div>
-      <div class="profile-info">
-        <div class="profile-name-row">
-          <h2>${user.username}</h2>
-          ${isMe ? `<button class="edit-profile-btn" onclick="openEditProfile()">
-            <i class="fa-solid fa-pen"></i> Edit Profile
-          </button>` : ''}
+
+      <!-- ── Avatar row ── -->
+      <div class="profile-avatar-row">
+        <div class="profile-avatar-wrap">
+          ${avatarHtml}
+          ${isMe ? `<label class="avatar-upload-btn" title="Change photo" for="avatar-file-input">
+            <i class="fa-solid fa-camera"></i>
+            <input type="file" id="avatar-file-input" accept="image/*" style="display:none"
+                   onchange="uploadAvatar(event)"/>
+          </label>` : ''}
         </div>
-        <p class="bio" id="profile-bio-text">${user.bio || '<span style="color:var(--muted);font-style:italic">No bio yet.</span>'}</p>
-        <p class="join-date"><i class="fa-solid fa-calendar-days"></i> Joined ${joinDate}</p>
-        <div class="profile-stats">
-          <div class="stat"><strong>${posts.length}</strong><span>Posts</span></div>
-          <div class="stat stat-clickable" onclick="openFollowList('${user._id}','followers')">
-            <strong id="profile-followers-count">${user.followers.length}</strong><span>Followers</span>
-          </div>
-          <div class="stat stat-clickable" onclick="openFollowList('${user._id}','following')">
-            <strong id="profile-following-count">${user.following.length}</strong><span>Following</span>
-          </div>
+
+        <!-- action buttons pushed right -->
+        <div class="profile-action-btns">
+          ${isMe
+            ? `<button class="edit-profile-btn" onclick="openEditProfile()">
+                 <i class="fa-solid fa-pen"></i> Edit Profile
+               </button>`
+            : `<button class="follow-btn ${isFollowing ? 'following' : ''}" id="follow-btn-${user._id}"
+                 onclick="toggleFollow('${user._id}', this)">
+                 ${isFollowing
+                   ? '<i class="fa-solid fa-user-check"></i> Following'
+                   : '<i class="fa-solid fa-user-plus"></i> Follow'}
+               </button>`
+          }
         </div>
-        ${!isMe ? `<button class="follow-btn ${isFollowing ? 'following' : ''}" id="follow-btn-${user._id}"
-             onclick="toggleFollow('${user._id}', this)">
-             ${isFollowing ? '<i class=\'fa-solid fa-user-check\'></i> Following' : '<i class=\'fa-solid fa-user-plus\'></i> Follow'}
-           </button>` : ''}
+      </div>
+
+      <!-- ── Identity ── -->
+      <div class="profile-identity">
+        <h2 class="profile-name">${user.username}</h2>
+        <p class="profile-headline">${user.bio || '<span style="color:var(--muted);font-style:italic">No bio yet.</span>'}</p>
+        <p class="profile-meta">
+          <i class="fa-solid fa-calendar-days"></i> Joined ${joinDate}
+        </p>
+      </div>
+
+      <!-- ── Stats bar ── -->
+      <div class="profile-stats-bar">
+        <div class="profile-stat">
+          <strong>${posts.length}</strong>
+          <span>Posts</span>
+        </div>
+        <div class="profile-stat-divider"></div>
+        <div class="profile-stat stat-clickable" onclick="openFollowList('${user._id}','followers')">
+          <strong id="profile-followers-count">${user.followers.length}</strong>
+          <span>Followers</span>
+        </div>
+        <div class="profile-stat-divider"></div>
+        <div class="profile-stat stat-clickable" onclick="openFollowList('${user._id}','following')">
+          <strong id="profile-following-count">${user.following.length}</strong>
+          <span>Following</span>
+        </div>
       </div>
     `;
 
     postsEl.innerHTML = '';
     if (!posts.length) {
-      postsEl.innerHTML = `<div class="empty"><i class="fa-solid fa-image"></i><p>No posts yet.</p></div>`;
-      return;
+      postsEl.innerHTML = `
+        <div class="empty-state card">
+          <div class="empty-illustration">
+            <svg viewBox="0 0 320 220" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <!-- ground -->
+              <ellipse cx="160" cy="198" rx="90" ry="10" fill="#e0e7ff" opacity="0.6"/>
+              <!-- photo frame stack (back) -->
+              <rect x="96" y="64" width="110" height="88" rx="12" fill="#ddd6fe" transform="rotate(-6 96 64)"/>
+              <!-- photo frame (middle) -->
+              <rect x="100" y="62" width="110" height="88" rx="12" fill="#ede9fe" transform="rotate(3 100 62)"/>
+              <!-- main photo frame -->
+              <rect x="98" y="66" width="114" height="90" rx="12" fill="#fff" stroke="#c7d2fe" stroke-width="1.5"/>
+              <!-- image placeholder inside -->
+              <rect x="110" y="78" width="90" height="54" rx="8" fill="#eef2ff"/>
+              <!-- mountain scene inside -->
+              <polygon points="127,122 148,90 169,122" fill="#a5b4fc"/>
+              <polygon points="148,122 165,98 182,122" fill="#818cf8"/>
+              <!-- sun -->
+              <circle cx="183" cy="86" r="7" fill="#fde68a"/>
+              <!-- photo caption line -->
+              <rect x="110" y="140" width="60" height="5" rx="2.5" fill="#ddd6fe"/>
+              <rect x="110" y="150" width="40" height="4" rx="2" fill="#ede9fe"/>
+              <!-- camera icon floating -->
+              <circle cx="248" cy="72" r="22" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.5"/>
+              <rect x="239" y="66" width="18" height="13" rx="3" fill="#818cf8"/>
+              <circle cx="248" cy="72" r="4" fill="#fff"/>
+              <rect x="255" y="64" width="5" height="4" rx="1" fill="#a5b4fc"/>
+              <!-- sparkles with float animations -->
+              <text x="44"  y="82"  font-size="18" class="ef-float-2">📷</text>
+              <text x="56"  y="158" font-size="14" class="ef-float-1">✨</text>
+              <text x="262" y="158" font-size="13" class="ef-float-3">🌟</text>
+              <text x="76"  y="110" font-size="12" class="ef-float-3">💜</text>
+              <text x="246" y="110" font-size="12" class="ef-float-1">⭐</text>
+            </svg>
+          </div>
+          <h3 class="empty-state-title">No posts yet</h3>
+          <p class="empty-state-sub">Share a photo or a thought — your first post is waiting.</p>
+          <button class="empty-btn-primary" onclick="showPage('home'); focusCreatePost()">
+            <i class="fa-solid fa-plus"></i> Make a Post
+          </button>
+        </div>`;
+    } else {
+      posts.forEach(p => postsEl.appendChild(renderPost(p)));
     }
-    posts.forEach(p => postsEl.appendChild(renderPost(p)));
+
+    // restore saved cover photo after DOM is ready
+    restoreCover(user._id);
+
   } catch (e) {
     headerEl.innerHTML = '<p style="color:red;padding:20px">Failed to load profile.</p>';
+  }
+}
+
+// Upload cover photo (stores as data URL in localStorage for now — no backend change needed)
+function uploadCover(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const cover = document.querySelector('.profile-cover');
+    if (cover) {
+      cover.style.backgroundImage = `url('${ev.target.result}')`;
+      cover.style.backgroundSize  = 'cover';
+      cover.style.backgroundPosition = 'center';
+    }
+    localStorage.setItem(`cover_${currentUser._id}`, ev.target.result);
+    showToast('Cover updated!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Restore cover from localStorage
+function restoreCover(userId) {
+  const saved = localStorage.getItem(`cover_${userId}`);
+  const cover = document.querySelector('.profile-cover');
+  if (saved && cover) {
+    cover.style.backgroundImage    = `url('${saved}')`;
+    cover.style.backgroundSize     = 'cover';
+    cover.style.backgroundPosition = 'center';
   }
 }
 
@@ -269,54 +521,93 @@ function renderPost(post) {
   const isLiked = post.likes.some(l => (l._id || l).toString() === currentUser._id.toString());
   const isOwner = post.author._id.toString() === currentUser._id.toString();
   const timeAgo = formatTime(post.createdAt);
+  const bio     = post.author.bio || '';
+
+  const avatarHtml = post.author.avatar
+    ? `<img src="${post.author.avatar}" class="avatar-img post-avatar" alt="avatar"/>`
+    : `<div class="avatar post-avatar">${post.author.username[0].toUpperCase()}</div>`;
 
   div.innerHTML = `
-    <div class="post-header">
-      <div class="post-author" onclick="showPage('profile','${post.author._id}')">
-        ${post.author.avatar
-          ? `<img src="${post.author.avatar}" class="avatar-img" alt="avatar"/>`
-          : `<div class="avatar">${post.author.username[0].toUpperCase()}</div>`}
-        <div class="post-author-info">
-          <strong>${post.author.username}</strong>
-          <span>${timeAgo}</span>
+    <div class="post-card-inner">
+
+      <!-- ── Header ── -->
+      <div class="post-header">
+        <div class="post-author" onclick="showPage('profile','${post.author._id}')">
+          ${avatarHtml}
+          <div class="post-author-info">
+            <div class="post-author-name">
+              <strong>${post.author.username}</strong>
+            </div>
+            <div class="post-author-meta">
+              ${bio ? `<span class="post-author-bio">${escHtml(bio.split('\n')[0].slice(0,40))}</span><span class="post-meta-dot">·</span>` : ''}
+              <span class="post-time">${timeAgo}</span>
+            </div>
+          </div>
+        </div>
+        ${isOwner ? `
+          <div class="post-menu-wrap">
+            <button class="action-btn post-menu-btn" onclick="togglePostMenu('${post._id}')">
+              <i class="fa-solid fa-ellipsis"></i>
+            </button>
+            <div class="post-menu hidden" id="post-menu-${post._id}">
+              <button onclick="openEditPost('${post._id}'); closePostMenu('${post._id}')">
+                <i class="fa-solid fa-pen"></i> Edit
+              </button>
+              <button class="danger" onclick="deletePost('${post._id}'); closePostMenu('${post._id}')">
+                <i class="fa-solid fa-trash"></i> Delete
+              </button>
+            </div>
+          </div>` : ''}
+      </div>
+
+      <!-- ── Content ── -->
+      ${post.content ? `<p class="post-content">${escHtml(post.content)}</p>` : ''}
+
+      <!-- ── Image ── -->
+      ${post.image ? `
+        <div class="post-image-wrap">
+          <img class="post-image" src="${post.image}" alt="post image" loading="lazy"/>
+        </div>` : ''}
+
+      <!-- ── Actions bar ── -->
+      <div class="post-actions">
+        <button class="post-action-btn ${isLiked ? 'liked' : ''}" id="like-btn-${post._id}" onclick="toggleLike('${post._id}')">
+          <i class="fa-solid fa-heart"></i>
+          <span id="like-count-${post._id}">${post.likes.length}</span>
+        </button>
+
+        <button class="post-action-btn" onclick="toggleComments('${post._id}')">
+          <i class="fa-regular fa-comment"></i>
+          <span id="comment-count-${post._id}">${post.comments.length}</span>
+        </button>
+
+        <button class="post-action-btn share-btn" onclick="sharePost('${post._id}','${escHtml(post.content).slice(0,60)}')" title="Share">
+          <i class="fa-solid fa-arrow-up-from-bracket"></i>
+          <span>Share</span>
+        </button>
+
+        <div class="post-actions-spacer"></div>
+
+        <button class="post-action-btn bookmark-btn" id="bm-${post._id}" onclick="toggleBookmark('${post._id}',this)" title="Save">
+          <i class="fa-regular fa-bookmark"></i>
+        </button>
+      </div>
+
+      <!-- ── Comments section ── -->
+      <div class="comments-section hidden" id="comments-${post._id}">
+        <div class="comments-list" id="comments-list-${post._id}">
+          ${post.comments.map(c => renderComment(c, post._id)).join('')}
+        </div>
+        <div class="comment-form">
+          ${currentUser.avatar
+            ? `<img src="${currentUser.avatar}" class="avatar-img sm" alt="me"/>`
+            : `<div class="avatar sm">${currentUser.username[0].toUpperCase()}</div>`}
+          <input type="text" id="comment-input-${post._id}" placeholder="Write a comment…"
+                 onkeydown="if(event.key==='Enter') addComment('${post._id}')" />
+          <button onclick="addComment('${post._id}')"><i class="fa-solid fa-paper-plane"></i></button>
         </div>
       </div>
-      ${isOwner ? `
-        <div class="post-menu-wrap">
-          <button class="action-btn post-menu-btn" onclick="togglePostMenu('${post._id}')">
-            <i class="fa-solid fa-ellipsis"></i>
-          </button>
-          <div class="post-menu hidden" id="post-menu-${post._id}">
-            <button onclick="openEditPost('${post._id}'); closePostMenu('${post._id}')">
-              <i class="fa-solid fa-pen"></i> Edit
-            </button>
-            <button class="danger" onclick="deletePost('${post._id}'); closePostMenu('${post._id}')">
-              <i class="fa-solid fa-trash"></i> Delete
-            </button>
-          </div>
-        </div>` : ''}
-    </div>
-    <p class="post-content">${escHtml(post.content)}</p>
-    ${post.image ? `<img class="post-image" src="${post.image}" alt="post image" loading="lazy"/>` : ''}
-    <div class="post-actions">
-      <button class="action-btn ${isLiked ? 'liked' : ''}" id="like-btn-${post._id}" onclick="toggleLike('${post._id}')">
-        <i class="fa-solid fa-heart"></i>
-        <span id="like-count-${post._id}">${post.likes.length}</span>
-      </button>
-      <button class="action-btn" onclick="toggleComments('${post._id}')">
-        <i class="fa-solid fa-comment"></i>
-        <span id="comment-count-${post._id}">${post.comments.length} Comments</span>
-      </button>
-    </div>
-    <div class="comments-section hidden" id="comments-${post._id}">
-      <div id="comments-list-${post._id}">
-        ${post.comments.map(c => renderComment(c, post._id)).join('')}
-      </div>
-      <div class="comment-form">
-        <input type="text" id="comment-input-${post._id}" placeholder="Write a comment…" 
-               onkeydown="if(event.key==='Enter') addComment('${post._id}')" />
-        <button onclick="addComment('${post._id}')">Send</button>
-      </div>
+
     </div>
   `;
   return div;
@@ -352,29 +643,115 @@ function focusCreatePost() {
   }
 }
 
+// ── Character count ring ──
+const CP_MAX = 500;
+function cpCharCount() {
+  const len   = document.getElementById('post-content').value.length;
+  const pct   = (len / CP_MAX) * 100;
+  const fill  = document.getElementById('cp-ring-fill');
+  const num   = document.getElementById('cp-char-num');
+  const wrap  = document.getElementById('cp-char-wrap');
+
+  // circumference of r=15.9 circle ≈ 100 (we use 100 for easy %)
+  fill.setAttribute('stroke-dasharray', `${pct} 100`);
+
+  // colour thresholds
+  fill.style.stroke = pct < 80 ? 'var(--primary)' : pct < 95 ? '#f59e0b' : 'var(--danger)';
+
+  // show remaining count when close to limit
+  if (len > CP_MAX * 0.8) {
+    num.textContent = CP_MAX - len;
+    num.classList.remove('hidden');
+    num.style.color = pct < 95 ? '#f59e0b' : 'var(--danger)';
+  } else {
+    num.classList.add('hidden');
+  }
+
+  wrap.style.opacity = len > 0 ? '1' : '0.35';
+}
+
+// ── Emoji picker ──
+const EMOJI_LIST = [
+  '😀','😂','🥰','😍','🤩','😎','🥳','😢','😡','🤔',
+  '👍','👎','❤️','🔥','✨','🎉','🙏','💯','😊','🤣',
+  '😭','😤','🤯','🥺','😴','🤗','😏','🙄','😅','😬',
+  '👀','💪','🤝','👏','🫶','💀','🌟','🚀','🎶','🍕',
+  '🌈','☀️','⚡','🎯','💡','🏆','📸','💬','🖤','💜',
+];
+
+function toggleEmojiPicker(e) {
+  e.stopPropagation();
+  const picker = document.getElementById('emoji-picker');
+  if (!picker.innerHTML) {
+    picker.innerHTML = EMOJI_LIST.map(em =>
+      `<button class="emoji-btn" onclick="insertEmoji('${em}')">${em}</button>`
+    ).join('');
+  }
+  picker.classList.toggle('hidden');
+}
+
+function insertEmoji(emoji) {
+  const ta = document.getElementById('post-content');
+  const start = ta.selectionStart;
+  const end   = ta.selectionEnd;
+  const val   = ta.value;
+  ta.value = val.slice(0, start) + emoji + val.slice(end);
+  ta.selectionStart = ta.selectionEnd = start + emoji.length;
+  ta.focus();
+  cpCharCount();
+  document.getElementById('emoji-picker').classList.add('hidden');
+}
+
+// close emoji picker on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.create-post')) {
+    document.getElementById('emoji-picker')?.classList.add('hidden');
+  }
+});
+
+// ── Location ──
+function addLocation() {
+  const place = prompt('Enter a location (e.g. New York, NY):');
+  if (!place?.trim()) return;
+  document.getElementById('location-text').textContent = place.trim();
+  document.getElementById('location-tag').classList.remove('hidden');
+}
+
+function removeLocation() {
+  document.getElementById('location-tag').classList.add('hidden');
+  document.getElementById('location-text').textContent = '';
+}
+
 async function createPost() {
-  const content = document.getElementById('post-content').value.trim();
+  const ta      = document.getElementById('post-content');
+  const content = ta.value.trim();
   const imageFile = document.getElementById('post-image').files[0];
+  const location  = document.getElementById('location-text').textContent.trim();
+
   if (!content && !imageFile) return showToast('Add some text or a photo');
 
   const formData = new FormData();
-  if (content) formData.append('content', content);
-  if (imageFile) formData.append('image', imageFile);
+  const fullContent = location ? `${content}\n📍 ${location}` : content;
+  if (fullContent) formData.append('content', fullContent);
+  if (imageFile)   formData.append('image', imageFile);
 
   try {
     const res = await fetch('/api/posts', {
       method: 'POST',
       credentials: 'include',
-      body: formData   // no Content-Type header — browser sets multipart boundary
+      body: formData
     });
     const post = await res.json();
     if (!res.ok) throw new Error(post.error || 'Failed to post');
 
-    document.getElementById('post-content').value = '';
+    ta.value = '';
+    cpCharCount();
     removeImage();
+    removeLocation();
+    document.getElementById('emoji-picker')?.classList.add('hidden');
+
     const container = document.getElementById('feed-posts');
-    const empty = container.querySelector('.empty');
-    if (empty) container.innerHTML = '';
+    if (container.querySelector('.empty-feed')) container.innerHTML = '';
     container.prepend(renderPost(post));
     showToast('Posted!');
   } catch (err) {
@@ -560,6 +937,23 @@ async function saveEditPost(postId) {
   }
 }
 
+function sharePost(postId, preview) {
+  const url = `${location.origin}/#post-${postId}`;
+  if (navigator.share) {
+    navigator.share({ title: 'SocialHub post', text: preview, url });
+  } else {
+    navigator.clipboard.writeText(url).then(() => showToast('Link copied!'));
+  }
+}
+
+function toggleBookmark(postId, btn) {
+  const icon = btn.querySelector('i');
+  const saved = icon.classList.contains('fa-solid');
+  icon.className = saved ? 'fa-regular fa-bookmark' : 'fa-solid fa-bookmark';
+  btn.classList.toggle('bookmarked', !saved);
+  showToast(saved ? 'Removed from saved' : 'Post saved!');
+}
+
 async function deletePost(postId) {
   if (!confirm('Delete this post?')) return;
   try {
@@ -575,11 +969,13 @@ async function toggleLike(postId) {
   try {
     const { likes, liked } = await api('POST', `/api/posts/${postId}/like`);
     const btn = document.getElementById(`like-btn-${postId}`);
-    if (liked) {
-      btn.classList.add('liked');
-    } else {
-      btn.classList.remove('liked');
-    }
+
+    // re-trigger animation by removing class first
+    btn.classList.remove('liked');
+    void btn.offsetWidth; // force reflow
+
+    if (liked) btn.classList.add('liked');
+
     document.getElementById(`like-count-${postId}`).textContent = likes;
   } catch (err) {
     showToast(err.message);
@@ -599,12 +995,19 @@ async function addComment(postId) {
     const comment = await api('POST', `/api/posts/${postId}/comments`, { content });
     input.value = '';
     const list = document.getElementById(`comments-list-${postId}`);
-    list.insertAdjacentHTML('beforeend', renderComment(comment, postId));
+    const temp = document.createElement('div');
+    temp.innerHTML = renderComment(comment, postId);
+    const el = temp.firstElementChild;
+    // reset animation so it plays fresh
+    el.style.animation = 'none';
+    list.appendChild(el);
+    void el.offsetWidth;
+    el.style.animation = '';
     // update comment counter
     const counter = document.getElementById(`comment-count-${postId}`);
     if (counter) {
       const current = parseInt(counter.textContent) || 0;
-      counter.textContent = `${current + 1} Comments`;
+      counter.textContent = `${current + 1}`;
     }
   } catch (err) {
     showToast(err.message);
@@ -858,6 +1261,34 @@ document.addEventListener('click', e => {
     document.getElementById('search-results').classList.add('hidden');
   }
 });
+
+// ── Dark Mode ──
+function toggleDarkMode(isDark) {
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  const thumb = document.getElementById('dark-toggle-thumb');
+  if (thumb) thumb.textContent = isDark ? '🌙' : '☀️';
+}
+
+// apply saved theme on load
+(function applyTheme() {
+  const saved = localStorage.getItem('theme') || 'light';
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    // sync checkbox once DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('dark-toggle-input');
+      const thumb = document.getElementById('dark-toggle-thumb');
+      if (input) input.checked = true;
+      if (thumb) thumb.textContent = '🌙';
+    });
+  }
+})();
+
+// Navbar scroll shadow
+window.addEventListener('scroll', () => {
+  document.querySelector('.navbar')?.classList.toggle('scrolled', window.scrollY > 8);
+}, { passive: true });
 
 // ── Utils ──
 function escHtml(str) {
