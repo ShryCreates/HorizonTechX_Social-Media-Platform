@@ -149,9 +149,3 @@ node server.js
 
 * LinkedIn: https://www.linkedin.com/in/shreya-kumari-24a249333/
 * GitHub: https://github.com/ShryCreates
-
----
-
-## 📄 License
-
-This project is developed for learning, portfolio, and educational purposes.
